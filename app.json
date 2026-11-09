@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "Tabletap",
+    "slug": "tabletap",
+    "scheme": "tabletap",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "plugins": ["expo-router"],
+    "android": {
+      "package": "in.tabletap.staff"
+    },
+    "ios": {
+      "bundleIdentifier": "in.tabletap.staff"
+    }
+  }
+}
