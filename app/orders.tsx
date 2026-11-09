@@ -64,6 +64,10 @@ export default function Orders() {
   const loadMember = useCallback(async () => {
     try {
       const me = await api.me();
+      if (me.profile && !me.profile.emailVerified) {
+        router.replace("/verify-email");
+        return;
+      }
       if (!me.membership) {
         // This login has no restaurant (set it up on the website).
         void signOut().then(() => router.replace("/login"));
