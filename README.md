@@ -5,7 +5,9 @@ Talks only to `tabletap-backend`.
 
 ## What it does
 
-- Login with a 6-digit email code (account must already exist from web signup)
+- Owner/manager login with email, phone or username + password (accounts are created on the website)
+- Shared phone/tablet: "Who's working?" → staff tap their name and enter their PIN; "Switch staff"; locks after
+  10 minutes without a tap. "PIN lock" is on by default; turning it off needs the owner/manager password
 - Live orders by stage (New, Preparing, Ready, Served) with counts
 - Move orders along, mark Cash/UPI paid (owner, manager, cashier)
 - Vibrates on every new order; pull down to refresh; follows the phone's dark mode

@@ -2,20 +2,23 @@ import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { sendLoginCode, verifyLoginCode } from "../src/lib/auth";
+import { api } from "../src/lib/api";
+import { setSession } from "../src/lib/auth";
 import { useColors } from "../src/theme";
 
 export default function Login() {
   const c = useColors();
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [step, setStep] = useState<"email" | "code">("email");
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [forgot, setForgot] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function run(fn: () => Promise<void>) {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       await fn();
     } catch (e) {
@@ -26,68 +29,66 @@ export default function Login() {
   }
 
   const input = [styles.input, { borderColor: c.line, backgroundColor: c.soft, color: c.ink }];
-  const disabled = busy || (step === "email" ? !email.includes("@") : code.length < 6);
+  const disabled = busy || !identifier.trim() || (!forgot && !password);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.wrap}>
         <Text style={[styles.brand, { color: c.accent }]}>Tabletap</Text>
-        <Text style={[styles.title, { color: c.ink }]}>Staff login</Text>
+        <Text style={[styles.title, { color: c.ink }]}>{forgot ? "Reset password" : "Restaurant login"}</Text>
         <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.line }]}>
-          {step === "email" ? (
+          <Text style={[styles.label, { color: c.ink }]}>Email, phone or username</Text>
+          <TextInput
+            style={input}
+            value={identifier}
+            onChangeText={setIdentifier}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="username"
+            textContentType="username"
+          />
+          {!forgot && (
             <>
-              <Text style={[styles.label, { color: c.ink }]}>Email</Text>
+              <Text style={[styles.label, { color: c.ink }]}>Password</Text>
               <TextInput
                 style={input}
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                autoComplete="email"
-                keyboardType="email-address"
-                placeholder="you@restaurant.com"
-                placeholderTextColor={c.muted}
-              />
-              <Text style={{ color: c.muted, fontSize: 13 }}>We email you a 6-digit code. No password.</Text>
-            </>
-          ) : (
-            <>
-              <Text style={[styles.label, { color: c.ink }]}>Code sent to {email}</Text>
-              <TextInput
-                style={[input, { letterSpacing: 6, fontSize: 22 }]}
-                value={code}
-                onChangeText={(t) => setCode(t.replace(/\D/g, "").slice(0, 6))}
-                keyboardType="number-pad"
-                autoComplete="one-time-code"
-                maxLength={6}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoComplete="current-password"
+                textContentType="password"
               />
             </>
           )}
           {error && <Text style={{ color: c.nonveg, fontWeight: "600" }}>{error}</Text>}
+          {notice && <Text style={{ color: c.ink, fontWeight: "600" }}>{notice}</Text>}
           <Pressable
             disabled={disabled}
             style={[styles.btn, { backgroundColor: c.accent, opacity: disabled ? 0.5 : 1 }]}
             onPress={() =>
               void run(async () => {
-                if (step === "email") {
-                  await sendLoginCode(email.trim());
-                  setStep("code");
+                if (forgot) {
+                  setNotice((await api.forgotPassword(identifier.trim())).message);
                 } else {
-                  await verifyLoginCode(email.trim(), code);
+                  const { session } = await api.login({ identifier: identifier.trim(), password });
+                  await setSession(session);
                   router.replace("/orders");
                 }
               })
             }
           >
             <Text style={[styles.btnText, { color: c.accentInk }]}>
-              {busy ? "Please wait…" : step === "email" ? "Send login code" : "Log in"}
+              {busy ? "Please wait…" : forgot ? "Send reset link" : "Log in"}
             </Text>
           </Pressable>
-          {step === "code" && (
-            <Pressable onPress={() => { setStep("email"); setCode(""); }}>
-              <Text style={{ color: c.muted, textAlign: "center", fontWeight: "600" }}>Use a different email</Text>
-            </Pressable>
-          )}
+          <Pressable onPress={() => { setForgot(!forgot); setError(null); setNotice(null); }}>
+            <Text style={{ color: c.muted, textAlign: "center", fontWeight: "600" }}>{forgot ? "Back to login" : "Forgot password?"}</Text>
+          </Pressable>
         </View>
+        <Text style={{ color: c.muted, textAlign: "center", fontSize: 13 }}>
+          Owners and managers log in here. Staff tap their name and enter their PIN after the owner logs in on this phone.
+          New restaurant? Sign up on the Tabletap website.
+        </Text>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
