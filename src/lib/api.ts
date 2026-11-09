@@ -1,4 +1,5 @@
-import { ApiError, STAFF_SESSION_ERROR, createApiClient } from "../contract";
+import { router } from "expo-router";
+import { ApiError, EMAIL_UNVERIFIED_ERROR, STAFF_SESSION_ERROR, createApiClient } from "../contract";
 import { getToken, loginEmail } from "./auth";
 import { endStaffSession, getStaffSession } from "./staff-mode";
 
@@ -14,6 +15,8 @@ export const api = Object.fromEntries(
       } catch (e) {
         // Expired/revoked staff session: back to "Who's working?" instead of logging the device out.
         if (e instanceof ApiError && e.code === STAFF_SESSION_ERROR) endStaffSession();
+        // Email not verified yet: go to the code screen from anywhere.
+        if (e instanceof ApiError && e.code === EMAIL_UNVERIFIED_ERROR) router.replace("/verify-email");
         throw e;
       }
     },

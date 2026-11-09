@@ -6,6 +6,7 @@ Talks only to `tabletap-backend`.
 ## What it does
 
 - Owner/manager login with email, phone or username + password (accounts are created on the website)
+- Owners with an unverified email see "Check your email" and enter the 6-digit code first
 - Shared phone/tablet: "Who's working?" → staff tap their name and enter their PIN; "Switch staff"; locks after
   10 minutes without a tap. "PIN lock" is on by default; turning it off needs the owner/manager password
 - Live orders by stage (New, Preparing, Ready, Served) with counts
