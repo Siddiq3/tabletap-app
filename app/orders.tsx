@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, FlatList, Pressable, RefreshControl, StyleSheet, Text, Vibration, View } from "react-native";
+import { AppState, FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, Vibration, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import {
-  ApiError, BOARD_STAGES, NEXT_STATUS, STATUS_LABEL, formatINR,
-  type Membership, type Order, type OrderStatus, type PaymentMethod,
+  ApiError, BOARD_STAGES, NEXT_STATUS, STAFF_IDLE_LOCK_MS, STAFF_SESSION_ERROR, STATUS_LABEL, formatINR,
+  type Membership, type Order, type OrderStatus, type PaymentMethod, type StaffMember,
 } from "../src/contract";
 import { api } from "../src/lib/api";
 import { signOut } from "../src/lib/auth";
 import { subscribeToOrders } from "../src/lib/feed";
 import { useColors, type Colors } from "../src/theme";
 import { UpiQrModal } from "../src/UpiQrModal";
+import { PasswordForm, StaffLock } from "../src/StaffLock";
+import { endStaffSession, setPinLock, useStaffMode } from "../src/lib/staff-mode";
 
 function minutesAgo(iso: string, now: number) {
   const m = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60_000));
@@ -19,7 +21,12 @@ function minutesAgo(iso: string, now: number) {
 
 export default function Orders() {
   const c = useColors();
-  const [member, setMember] = useState<Membership | null>(null);
+  /** The account logged in on this phone. */
+  const [device, setDevice] = useState<Membership | null>(null);
+  const { session, pinLock } = useStaffMode();
+  const [staff, setStaff] = useState<StaffMember[] | null>(null); // null = not loaded yet
+  const [ownerUnlocked, setOwnerUnlocked] = useState(false);
+  const [askLockOff, setAskLockOff] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [stage, setStage] = useState<OrderStatus>("new");
   const [error, setError] = useState<string | null>(null);
@@ -29,8 +36,10 @@ export default function Orders() {
   const seen = useRef<Set<string> | null>(null);
   const [qrId, setQrId] = useState<string | null>(null);
 
+  // Only a real logout (401) signs the phone out. A 403 is just "your role can't do this", and an
+  // ended staff session goes back to "Who's working?" (lib/api.ts handles that).
   const handleAuthError = useCallback((e: unknown) => {
-    if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+    if (e instanceof ApiError && e.status === 401 && e.code !== STAFF_SESSION_ERROR) {
       void signOut().then(() => router.replace("/login"));
       return true;
     }
@@ -55,8 +64,12 @@ export default function Orders() {
   const loadMember = useCallback(async () => {
     try {
       const me = await api.me();
-      if (!me.membership) throw new ApiError(403, "No restaurant");
-      setMember(me.membership);
+      if (!me.membership) {
+        // This login has no restaurant (set it up on the website).
+        void signOut().then(() => router.replace("/login"));
+        return;
+      }
+      setDevice(me.membership);
     } catch (e) {
       if (!handleAuthError(e)) setError(e instanceof Error ? e.message : "Could not load your restaurant.");
     }
@@ -70,6 +83,38 @@ export default function Orders() {
     return () => sub.remove();
   }, [loadMember]);
 
+  const canLock = !!device && (device.role === "owner" || device.role === "manager");
+  // Names for "Who's working?", loaded with the device's own role (no staff session active).
+  useEffect(() => {
+    if (!canLock || !pinLock || session) return;
+    api.staffList()
+      .then((r) => setStaff(r.staff.filter((m) => m.isActive)))
+      .catch((e) => { if (!handleAuthError(e)) setError(e instanceof Error ? e.message : "Could not load staff."); });
+  }, [canLock, pinLock, session, handleAuthError]);
+
+  const lockApplies = canLock && !!pinLock && !!staff?.length;
+  const locked = lockApplies && !session && !ownerUnlocked;
+  // Fail closed: with the PIN lock on, show the board only once we know whether to lock.
+  const waitingForLock = canLock && pinLock !== false && !session && !ownerUnlocked && staff === null;
+
+  const lock = useCallback(() => {
+    endStaffSession();
+    setOwnerUnlocked(false);
+  }, []);
+
+  // Back to "Who's working?" after 10 minutes without a tap.
+  const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touched = useCallback(() => {
+    if (idle.current) clearTimeout(idle.current);
+    idle.current = lockApplies && !locked ? setTimeout(lock, STAFF_IDLE_LOCK_MS) : null;
+  }, [lockApplies, locked, lock]);
+  useEffect(() => {
+    touched();
+    return () => { if (idle.current) clearTimeout(idle.current); };
+  }, [touched]);
+
+  // While a staff member is working, their role decides what they can do (the API enforces it too).
+  const member: Membership | null = device && session ? { ...device, role: session.staff.role } : device;
   const restaurantId = member?.restaurant.id;
   useEffect(() => {
     if (!restaurantId) return;
@@ -97,17 +142,56 @@ export default function Orders() {
   // Latest copy from the board; once it's paid (here or on another device) the QR closes.
   const qrOrder = orders.find((o) => o.id === qrId && o.paymentStatus !== "paid") ?? null;
 
+  if (locked || waitingForLock) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
+        <Text style={[s.title, { paddingHorizontal: 16, paddingTop: 8 }]} numberOfLines={1}>{device?.restaurant.name}</Text>
+        {error && <Text style={s.error}>{error}</Text>}
+        {locked ? <StaffLock staff={staff!} onOwner={() => setOwnerUnlocked(true)} /> : <Text style={[s.muted, s.empty]}>Loading…</Text>}
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={["top", "left", "right"]}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={["top", "left", "right"]} onTouchStart={touched}>
       <View style={s.header}>
-        <View style={{ flex: 1 }}>
+        <View style={{ flexGrow: 1, flexBasis: 160 }}>
           <Text style={s.title} numberOfLines={1}>{member?.restaurant.name ?? "Tabletap"}</Text>
-          <Text style={s.muted}>{member ? `${member.role} · live orders` : "Loading…"}</Text>
+          <Text style={s.muted}>
+            {session ? `${session.staff.name} · ${session.staff.role}` : member ? `${member.role} · live orders` : "Loading…"}
+          </Text>
         </View>
-        <Pressable onPress={() => void signOut().then(() => router.replace("/login"))} style={s.smallBtn}>
-          <Text style={s.smallBtnText}>Log out</Text>
-        </Pressable>
+        {lockApplies && (
+          <Pressable onPress={lock} style={[s.smallBtn, { backgroundColor: c.ink, borderColor: c.ink }]}>
+            <Text style={[s.smallBtnText, { color: c.surface }]}>Switch staff</Text>
+          </Pressable>
+        )}
+        {!session && canLock && (
+          <Pressable
+            onPress={() => (pinLock ? setAskLockOff(true) : setPinLock(true))}
+            style={s.smallBtn}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: !!pinLock }}
+            accessibilityLabel="Use this device for staff (PIN lock)"
+          >
+            <Text style={s.smallBtnText}>PIN lock {pinLock ? "on" : "off"}</Text>
+          </Pressable>
+        )}
+        {!session && (
+          <Pressable onPress={() => void signOut().then(() => router.replace("/login"))} style={s.smallBtn}>
+            <Text style={s.smallBtnText}>Log out</Text>
+          </Pressable>
+        )}
       </View>
+      <Modal visible={askLockOff} transparent animationType="fade" onRequestClose={() => setAskLockOff(false)}>
+        <View style={{ flex: 1, justifyContent: "center", padding: 20, backgroundColor: "rgba(0,0,0,0.6)" }}>
+          <PasswordForm
+            title="Turn off PIN lock on this phone"
+            onDone={() => { setPinLock(false); setAskLockOff(false); }}
+            onCancel={() => setAskLockOff(false)}
+          />
+        </View>
+      </Modal>
 
       <View style={s.tabs}>
         {BOARD_STAGES.map((st) => {
@@ -154,7 +238,9 @@ export default function Orders() {
               {o.note && <Text style={s.note}>Note: {o.note}</Text>}
               <View style={[s.row, { flexWrap: "wrap", gap: 8 }]}>
                 <Text style={[s.pill, { color: o.paymentStatus === "paid" ? c.good : c.warn, borderColor: o.paymentStatus === "paid" ? c.good : c.warn }]}>
-                  {o.paymentStatus === "paid" ? `PAID ${(o.paymentMethod ?? "").toUpperCase()}` : `DUE ${formatINR(o.totalPaise)}`}
+                  {o.paymentStatus === "paid"
+                    ? `PAID ${(o.paymentMethod ?? "").toUpperCase()}${o.paidByName ? ` BY ${o.paidByName.toUpperCase()}` : ""}`
+                    : `DUE ${formatINR(o.totalPaise)}`}
                 </Text>
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                   {o.paymentStatus !== "paid" && canTakePayment && (
@@ -191,7 +277,7 @@ export default function Orders() {
 
 function makeStyles(c: Colors) {
   return StyleSheet.create({
-    header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
+    header: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
     title: { fontSize: 22, fontWeight: "800", color: c.ink },
     muted: { color: c.muted, fontSize: 13 },
     tabs: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: c.line, paddingHorizontal: 8 },
