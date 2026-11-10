@@ -1,10 +1,15 @@
 // Live order signal; same contract as web/src/lib/feed.ts.
-import { supabase } from "./auth";
+import { getSupabase } from "./auth";
 
-export function subscribeToOrders(restaurantId: string, onChange: () => void): () => void {
+import { DEMO_MODE } from "./demo-store";
+
+export function subscribeToOrders(restaurantId: string, onChange: () => void, scope = "orders"): () => void {
+  if (DEMO_MODE) return () => {};
+  const supabase = getSupabase();
   const channel = supabase
-    .channel(`orders:${restaurantId}`)
+    .channel(`${scope}:${restaurantId}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `restaurant_id=eq.${restaurantId}` }, onChange)
+    .on("postgres_changes", { event: "*", schema: "public", table: "staff_calls", filter: `restaurant_id=eq.${restaurantId}` }, onChange)
     .subscribe();
   return () => {
     void supabase.removeChannel(channel);

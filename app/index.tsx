@@ -9,7 +9,7 @@ export default function Start() {
   const [target, setTarget] = useState<"/orders" | "/login" | null>(null);
 
   useEffect(() => {
-    getToken().then((t) => setTarget(t ? "/orders" : "/login"));
+    getToken().then((t) => setTarget(t ? "/orders" : "/login")).catch(() => setTarget("/login"));
   }, []);
 
   if (target) return <Redirect href={target} />;

@@ -1,17 +1,13 @@
-import { useColorScheme } from "react-native";
-
+import { useColorScheme } from 'react-native';
 const light = {
-  bg: "#EEF1EF", surface: "#FFFFFF", ink: "#16211D", muted: "#5E6B66", line: "#D6DDDA", soft: "#F6F8F7",
-  accent: "#D2412A", accentInk: "#FFFFFF", turmeric: "#E3A21A", info: "#2F6FB0",
-  veg: "#1E8A3E", nonveg: "#B3261E", good: "#1E8A3E", warn: "#B7791F",
+  bg: '#F6F8F2', surface: '#FFFFFF', ink: '#203B31', muted: '#5B6E64', line: '#DDE5D7', soft: '#EAF0E5',
+  accent: '#D2412A', accentInk: '#FFFFFF', turmeric: '#E3A21A', info: '#2F6FB0',
+  veg: '#35713E', nonveg: '#B3261E', good: '#35713E', warn: '#93600F',
 };
 const dark: typeof light = {
-  bg: "#0F1513", surface: "#18211E", ink: "#E8EEEB", muted: "#93A19B", line: "#2A3632", soft: "#1E2925",
-  accent: "#F0634A", accentInk: "#1A0C08", turmeric: "#F2B53A", info: "#6FA8E0",
-  veg: "#4CC26F", nonveg: "#F07167", good: "#4CC26F", warn: "#E6A93C",
+  bg: '#101B15', surface: '#19281F', ink: '#EBF2E5', muted: '#A7B9AA', line: '#36483B', soft: '#24392A',
+  accent: '#F8846C', accentInk: '#24100A', turmeric: '#F2B53A', info: '#8BB7EF',
+  veg: '#83D396', nonveg: '#FF9B91', good: '#83D396', warn: '#F0C27A',
 };
-
 export type Colors = typeof light;
-export function useColors(): Colors {
-  return useColorScheme() === "dark" ? dark : light;
-}
+export function useColors(): Colors { return useColorScheme() === 'dark' ? dark : light; }

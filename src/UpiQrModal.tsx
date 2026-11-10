@@ -1,5 +1,6 @@
 import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { DEMO_MODE } from "./lib/demo-store";
 import QRCode from "react-native-qrcode-svg";
 import { formatINR, upiLink, type Order, type Restaurant } from "./contract";
 
@@ -24,14 +25,14 @@ export function UpiQrModal({ order, restaurant, busy, error, onMarkPaid, onClose
           <View style={s.body}>
             <Text style={s.amount}>{formatINR(order.totalPaise)}</Text>
             <Text style={s.meta}>Order #{order.orderNo} · {order.tableLabel ?? "No table"}</Text>
-            {restaurant.upiId ? (
+            {(restaurant.upiId || DEMO_MODE) ? (
               <>
                 <View style={s.qr}>
                   {/* Amount comes from the API's totalPaise, never recalculated here. */}
-                  <QRCode value={upiLink(restaurant.upiId, restaurant.name, order.totalPaise, `Order ${order.orderNo}`)} size={size} />
+                  <QRCode value={DEMO_MODE ? `tabletap-demo:order/${order.id}` : upiLink(restaurant.upiId!, restaurant.name, order.totalPaise, `Order ${order.orderNo}`)} size={size} />
                 </View>
-                <Text style={s.upi} selectable>UPI ID: {restaurant.upiId}</Text>
-                <Text style={s.hint}>After paying, show your payment screen to the staff.</Text>
+                <Text style={s.upi} selectable>{DEMO_MODE ? "Demo QR · Not a payment code" : `UPI ID: ${restaurant.upiId}`}</Text>
+                <Text style={s.hint}>{DEMO_MODE ? "Sample payment preview. No money will move." : "After paying, show your payment screen to the staff."}</Text>
               </>
             ) : (
               <Text style={s.hint}>No UPI ID yet. Ask the owner to add one in Settings on the web dashboard.</Text>
@@ -39,12 +40,12 @@ export function UpiQrModal({ order, restaurant, busy, error, onMarkPaid, onClose
           </View>
           <View style={s.actions}>
             {error && <Text style={s.error}>{error}</Text>}
-            {restaurant.upiId && (
-              <Pressable disabled={busy} style={[s.btn, s.primary, busy && { opacity: 0.6 }]} onPress={() => onMarkPaid(order)}>
+            {(restaurant.upiId || DEMO_MODE) && (
+              <Pressable accessibilityRole="button" disabled={busy} style={[s.btn, s.primary, busy && { opacity: 0.6 }]} onPress={() => onMarkPaid(order)}>
                 <Text style={s.primaryText}>{busy ? "Saving…" : "Mark UPI paid"}</Text>
               </Pressable>
             )}
-            <Pressable style={s.btn} onPress={onClose}>
+            <Pressable accessibilityRole="button" style={s.btn} onPress={onClose}>
               <Text style={s.btnText}>Close</Text>
             </Pressable>
           </View>
