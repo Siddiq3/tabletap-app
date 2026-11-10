@@ -4,7 +4,9 @@ import { useSyncExternalStore } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { PinSessionResponse } from "../contract";
 
-const KEY = "tabletap.pinLock";
+import { DEMO_MODE } from "./demo-store";
+
+const KEY = DEMO_MODE ? "tabletap.demo.pinLock" : "tabletap.pinLock";
 
 /** pinLock null = not read from storage yet. */
 type State = { session: PinSessionResponse | null; pinLock: boolean | null };
@@ -24,7 +26,7 @@ const subscribe = (l: () => void) => {
   listeners.add(l);
   return () => { listeners.delete(l); };
 };
-export const useStaffMode = () => useSyncExternalStore(subscribe, () => state);
+export const useStaffMode = () => useSyncExternalStore(subscribe, () => state, () => state);
 
 /** For the API client: X-Staff-Session while a staff member is working. */
 export const getStaffSession = () => state.session?.token ?? null;

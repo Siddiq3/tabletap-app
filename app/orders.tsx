@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, Vibration, View } from "react-native";
+import { ActivityIndicator, AppState, FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, Vibration, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import {
   ApiError, BOARD_STAGES, NEXT_STATUS, STAFF_IDLE_LOCK_MS, STAFF_SESSION_ERROR, STATUS_LABEL, formatINR,
   type Membership, type Order, type OrderStatus, type PaymentMethod, type StaffMember,
 } from "../src/contract";
+import { StaffCalls } from "../src/StaffCalls";
+import { Brand, Button, Icon } from "../src/ui";
+import { DEMO_MODE, demoStore } from "../src/lib/demo-store";
 import { api } from "../src/lib/api";
 import { signOut } from "../src/lib/auth";
 import { subscribeToOrders } from "../src/lib/feed";
@@ -21,6 +24,8 @@ function minutesAgo(iso: string, now: number) {
 
 export default function Orders() {
   const c = useColors();
+  const { width } = useWindowDimensions();
+  const columns = width >= 800 ? 2 : 1;
   /** The account logged in on this phone. */
   const [device, setDevice] = useState<Membership | null>(null);
   const { session, pinLock } = useStaffMode();
@@ -146,10 +151,17 @@ export default function Orders() {
   // Latest copy from the board; once it's paid (here or on another device) the QR closes.
   const qrOrder = orders.find((o) => o.id === qrId && o.paymentStatus !== "paid") ?? null;
 
+  useEffect(() => {
+    if (qrId && orders.some(o => o.id === qrId && o.paymentStatus === "paid")) setQrId(null);
+  }, [orders, qrId]);
+
+  if (!device) return <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}><View style={{ flex: 1, padding: 24, justifyContent: "center", alignItems: "center", gap: 18 }}><Brand />{error ? <><Text style={s.error}>{error}</Text><Button title="Try again" onPress={() => void loadMember()}/></> : <><ActivityIndicator color={c.accent}/><Text style={s.muted}>Opening your restaurant…</Text></>}</View></SafeAreaView>;
+
   if (locked || waitingForLock) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
-        <Text style={[s.title, { paddingHorizontal: 16, paddingTop: 8 }]} numberOfLines={1}>{device?.restaurant.name}</Text>
+        <View style={{ padding: 20, gap: 18 }}><Brand />{DEMO_MODE && <View style={{ gap: 10 }}><Text style={s.demoText}>Sample restaurant · Staff PIN: 1234 · Owner password: tabletap123</Text><Button secondary title="Reset sample data" onPress={() => { demoStore.reset(); void load(); }}/></View>}</View>
+        <Text style={[s.title, { paddingHorizontal: 24, paddingTop: 8 }]} numberOfLines={1}>{device?.restaurant.name}</Text>
         {error && <Text style={s.error}>{error}</Text>}
         {locked ? <StaffLock staff={staff!} onOwner={() => setOwnerUnlocked(true)} /> : <Text style={[s.muted, s.empty]}>Loading…</Text>}
       </SafeAreaView>
@@ -158,15 +170,18 @@ export default function Orders() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={["top", "left", "right"]} onTouchStart={touched}>
+      <View style={{ flex: 1, width: "100%", maxWidth: 1100, alignSelf: "center" }}>
+      <View style={s.brandRow}><Brand /><View style={s.live}><View style={[s.liveDot, { backgroundColor: DEMO_MODE ? c.warn : c.good }]}/><Text style={s.muted}>{DEMO_MODE ? "Demo mode" : "Orders board"}</Text></View></View>
+      {DEMO_MODE && <View style={s.demoBanner}><Text style={s.demoText}>Sample data only · No real orders or payments</Text><Pressable accessibilityRole="button" onPress={() => { setQrId(null); demoStore.reset(); void load(); }} style={s.resetButton}><Icon name="refresh" color={c.ink} size={16}/><Text style={s.resetText}>Reset</Text></Pressable></View>}
       <View style={s.header}>
         <View style={{ flexGrow: 1, flexBasis: 160 }}>
-          <Text style={s.title} numberOfLines={1}>{member?.restaurant.name ?? "Tabletap"}</Text>
+          <Text style={s.title} numberOfLines={1}>{member?.restaurant.name ?? "Your restaurant"}</Text>
           <Text style={s.muted}>
             {session ? `${session.staff.name} · ${session.staff.role}` : member ? `${member.role} · live orders` : "Loading…"}
           </Text>
         </View>
         {lockApplies && (
-          <Pressable onPress={lock} style={[s.smallBtn, { backgroundColor: c.ink, borderColor: c.ink }]}>
+          <Pressable accessibilityRole="button" onPress={lock} style={[s.smallBtn, { backgroundColor: c.ink, borderColor: c.ink }]}>
             <Text style={[s.smallBtnText, { color: c.surface }]}>Switch staff</Text>
           </Pressable>
         )}
@@ -182,7 +197,7 @@ export default function Orders() {
           </Pressable>
         )}
         {!session && (
-          <Pressable onPress={() => void signOut().then(() => router.replace("/login"))} style={s.smallBtn}>
+          <Pressable accessibilityRole="button" onPress={() => { endStaffSession(); void signOut().then(() => router.replace("/login")); }} style={s.smallBtn}>
             <Text style={s.smallBtnText}>Log out</Text>
           </Pressable>
         )}
@@ -197,15 +212,21 @@ export default function Orders() {
         </View>
       </Modal>
 
+      <View style={s.serviceHeading}><Text accessibilityRole="header" style={s.serviceTitle}>Service, in sync.</Text><Text style={s.muted}>Every table. Every order. Right here.</Text></View>
+      <View style={s.stats}>
+        <View style={s.stat}><Text style={s.statValue}>{orders.filter(o => ["new", "preparing", "ready"].includes(o.status)).length}</Text><Text style={s.muted}>Active orders</Text></View>
+        <View style={s.stat}><Text style={[s.statValue, { color: c.good }]}>{orders.filter(o => o.status === "ready").length}</Text><Text style={s.muted}>Ready to serve</Text></View>
+        <View style={s.stat}><Text style={s.statValue}>{orders.filter(o => o.paymentStatus === "unpaid").length}</Text><Text style={s.muted}>Unpaid bills</Text></View>
+      </View>
       <View style={s.tabs}>
         {BOARD_STAGES.map((st) => {
           const count = orders.filter((o) => o.status === st).length;
           const on = st === stage;
           return (
-            <Pressable key={st} onPress={() => setStage(st)} style={[s.tab, on && { borderBottomColor: c.accent }]}>
-              <Text style={[s.tabText, on && { color: c.ink }]}>{STATUS_LABEL[st]}</Text>
-              {count > 0 && st !== "served" && (
-                <View style={s.badge}><Text style={s.badgeText}>{count}</Text></View>
+            <Pressable key={st} accessibilityRole="button" accessibilityLabel={`${STATUS_LABEL[st]} orders (${count})`} accessibilityState={{ selected: on }} onPress={() => setStage(st)} style={[s.tab, on && { backgroundColor: c.ink }]}>
+              <Text style={[s.tabText, on && { color: c.surface }]}>{STATUS_LABEL[st]}</Text>
+              {(
+                <View style={[s.badge, on && { backgroundColor: c.surface }]}><Text style={[s.badgeText, on && { color: c.ink }]}>{count}</Text></View>
               )}
             </Pressable>
           );
@@ -215,56 +236,34 @@ export default function Orders() {
       {error && <Text style={s.error}>{error}</Text>}
 
       <FlatList
+        ListHeaderComponent={<StaffCalls restaurantId={member!.restaurant.id}/>}
+        key={columns}
+        numColumns={columns}
+        columnWrapperStyle={columns > 1 ? { gap: 16 } : undefined}
         data={stage === "served" ? list.slice(0, 20) : list}
         keyExtractor={(o) => o.id}
-        contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 40 }}
+        contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await Promise.all([loadMember(), load()]); setRefreshing(false); }} />}
-        ListEmptyComponent={<Text style={[s.muted, s.empty]}>No {STATUS_LABEL[stage].toLowerCase()} orders right now.</Text>}
+        ListEmptyComponent={<View style={s.emptyState}><Icon name="order" size={36} color={c.muted}/><Text style={s.emptyTitle}>All clear here.</Text><Text style={[s.muted, { textAlign: "center", lineHeight: 22 }]}>No {STATUS_LABEL[stage].toLowerCase()} orders right now. Pull down to check for the latest.</Text></View>}
         renderItem={({ item: o }) => {
           const next = NEXT_STATUS[o.status];
           const disabled = busy === o.id;
           const pay = (m: PaymentMethod) => act(o.id, () => api.markPaid(o.id, m));
           return (
             <View style={[s.ticket, { opacity: disabled ? 0.6 : 1 }]}>
-              <View style={s.row}>
-                <Text style={s.table}>{o.tableLabel ?? "No table"}</Text>
-                <Text style={s.muted}>#{o.orderNo} · {minutesAgo(o.createdAt, now)}</Text>
-              </View>
-              {o.lines.map((l, i) => (
-                <View key={i} style={s.line}>
-                  <Text style={s.qty}>{l.qty}×</Text>
-                  <View style={[s.mark, { borderColor: l.isVeg ? c.veg : c.nonveg }]}>
-                    <View style={[s.markDot, { backgroundColor: l.isVeg ? c.veg : c.nonveg }]} />
-                  </View>
-                  <Text style={s.lineText}>{l.name}</Text>
-                </View>
-              ))}
-              {o.note && <Text style={s.note}>Note: {o.note}</Text>}
-              <View style={[s.row, { flexWrap: "wrap", gap: 8 }]}>
-                <Text style={[s.pill, { color: o.paymentStatus === "paid" ? c.good : c.warn, borderColor: o.paymentStatus === "paid" ? c.good : c.warn }]}>
-                  {o.paymentStatus === "paid"
-                    ? `PAID ${(o.paymentMethod ?? "").toUpperCase()}${o.paidByName ? ` BY ${o.paidByName.toUpperCase()}` : ""}`
-                    : `DUE ${formatINR(o.totalPaise)}`}
-                </Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                  {o.paymentStatus !== "paid" && canTakePayment && (
-                    <>
-                      <Pressable disabled={disabled} style={s.smallBtn} onPress={() => void pay("cash")}><Text style={s.smallBtnText}>Cash</Text></Pressable>
-                      <Pressable disabled={disabled} style={s.smallBtn} onPress={() => void pay("upi")}><Text style={s.smallBtnText}>UPI</Text></Pressable>
-                      <Pressable disabled={disabled} style={s.smallBtn} onPress={() => { setError(null); setQrId(o.id); }}><Text style={s.smallBtnText}>Show UPI QR</Text></Pressable>
-                    </>
-                  )}
-                  {next && (
-                    <Pressable disabled={disabled} style={[s.smallBtn, { backgroundColor: c.ink, borderColor: c.ink }]} onPress={() => void act(o.id, () => api.moveOrder(o.id, next.to))}>
-                      <Text style={[s.smallBtnText, { color: c.surface }]}>{next.action}</Text>
-                    </Pressable>
-                  )}
-                </View>
-              </View>
+              <View style={s.row}><View style={{ gap: 6 }}><Text style={s.table}>{o.tableLabel?.replace(/^T(?=\d)/, "Table ") ?? "No table"}</Text><Text style={s.muted}>Order #{o.orderNo} · {minutesAgo(o.createdAt, now)}</Text></View><Text style={[s.pill, { backgroundColor: o.paymentStatus === "paid" ? c.soft : c.bg, color: o.paymentStatus === "paid" ? c.good : c.warn }]}>{o.paymentStatus === "paid" ? "Paid" : "Unpaid"}</Text></View>
+              <View style={s.divider}/>
+              {o.lines.map((l, i) => <View key={i} style={s.line}><Text style={s.qty}>{l.qty}×</Text><View style={[s.mark, { borderColor: l.isVeg ? c.veg : c.nonveg }]}><View style={[s.markDot, { backgroundColor: l.isVeg ? c.veg : c.nonveg, borderRadius: l.isVeg ? 3 : 0 }]}/></View><Text style={s.lineText}>{l.name}</Text></View>)}
+              {o.note && <View style={s.note}><Text style={{ color: c.muted, fontSize: 11, fontWeight: "700", marginBottom: 4 }}>Kitchen note</Text><Text style={{ color: c.ink, fontSize: 14 }}>{o.note}</Text></View>}
+              <View style={[s.row, { marginTop: 4 }]}><Text style={s.muted}>Total, including GST</Text><Text style={s.total}>{formatINR(o.totalPaise)}</Text></View>
+              {o.paymentStatus === "paid" && <Text style={s.paidDetail}>Paid by {o.paymentMethod?.toUpperCase()}{o.paidByName ? ` · Recorded by ${o.paidByName}` : ""}</Text>}
+              {o.paymentStatus !== "paid" && canTakePayment && <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}><Pressable accessibilityRole="button" accessibilityLabel={`Mark order ${o.orderNo} cash paid`} disabled={disabled} style={s.smallBtn} onPress={() => void pay("cash")}><Text style={s.smallBtnText}>Cash paid</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Mark order ${o.orderNo} UPI paid`} disabled={disabled} style={s.smallBtn} onPress={() => void pay("upi")}><Text style={s.smallBtnText}>UPI paid</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Show UPI QR for order ${o.orderNo}`} disabled={disabled} style={s.smallBtn} onPress={() => { setError(null); setQrId(o.id); }}><Text style={s.smallBtnText}>{DEMO_MODE ? "Demo QR" : "UPI QR"}</Text></Pressable></View>}
+              {next && <Button title={disabled ? "Updating…" : next.action} disabled={disabled} onPress={() => void act(o.id, () => api.moveOrder(o.id, next.to))}/>}
             </View>
           );
         }}
       />
+      </View>
       {member && (
         <UpiQrModal
           order={qrOrder}
@@ -281,27 +280,25 @@ export default function Orders() {
 
 function makeStyles(c: Colors) {
   return StyleSheet.create({
-    header: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
-    title: { fontSize: 22, fontWeight: "800", color: c.ink },
-    muted: { color: c.muted, fontSize: 13 },
-    tabs: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: c.line, paddingHorizontal: 8 },
-    tab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12, borderBottomWidth: 2.5, borderBottomColor: "transparent" },
-    tabText: { fontWeight: "700", color: c.muted },
-    badge: { backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 1 },
-    badgeText: { color: c.accentInk, fontSize: 11, fontWeight: "800" },
-    error: { color: c.nonveg, fontWeight: "600", paddingHorizontal: 16, paddingTop: 10 },
-    empty: { textAlign: "center", paddingVertical: 40 },
-    ticket: { backgroundColor: c.surface, borderColor: c.line, borderWidth: 1, borderRadius: 12, padding: 12, gap: 8 },
-    row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-    table: { fontSize: 20, fontWeight: "800", color: c.ink },
-    line: { flexDirection: "row", alignItems: "center", gap: 8 },
-    qty: { fontWeight: "800", color: c.ink, minWidth: 26, fontSize: 15 },
-    lineText: { color: c.ink, fontSize: 15, flexShrink: 1 },
-    mark: { width: 14, height: 14, borderWidth: 1.5, borderRadius: 2, alignItems: "center", justifyContent: "center" },
-    markDot: { width: 6, height: 6, borderRadius: 3 },
-    note: { backgroundColor: c.soft, color: c.ink, borderRadius: 6, padding: 6, fontSize: 13 },
-    pill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, fontSize: 11, fontWeight: "800" },
-    smallBtn: { borderWidth: 1, borderColor: c.line, backgroundColor: c.surface, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
-    smallBtnText: { fontWeight: "700", color: c.ink, fontSize: 13 },
+    brandRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, paddingBottom: 16 },
+    live: { flexDirection: "row", alignItems: "center", gap: 7 }, liveDot: { width: 7, height: 7, borderRadius: 4 },
+    demoBanner: { backgroundColor: c.soft, marginHorizontal: 20, paddingLeft: 12, paddingRight: 4, borderRadius: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+    demoText: { fontSize: 11, color: c.muted, flexShrink: 1, lineHeight: 18 }, resetButton: { flexDirection: "row", gap: 6, padding: 10, alignItems: "center", minHeight: 44 }, resetText: { color: c.ink, fontSize: 11, fontWeight: "700" },
+    header: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, padding: 20, paddingBottom: 12 },
+    title: { fontSize: 19, fontWeight: "700", color: c.ink }, muted: { color: c.muted, fontSize: 12 },
+    serviceHeading: { padding: 20, paddingTop: 10, paddingBottom: 20, gap: 6 }, serviceTitle: { color: c.ink, fontSize: 32, fontWeight: "800", letterSpacing: -.9 },
+    stats: { flexDirection: "row", marginHorizontal: 20, backgroundColor: c.soft, borderRadius: 14, paddingVertical: 18, marginBottom: 20 }, stat: { flex: 1, alignItems: "center", gap: 5 }, statValue: { color: c.ink, fontSize: 26, fontWeight: "800" },
+    tabs: { flexDirection: "row", gap: 6, marginHorizontal: 20, padding: 5, borderRadius: 14, backgroundColor: c.soft },
+    tab: { flex: 1, alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 11, borderRadius: 10, minHeight: 64 }, tabText: { fontWeight: "600", fontSize: 12, color: c.muted },
+    badge: { backgroundColor: c.bg, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 1 }, badgeText: { color: c.muted, fontSize: 11, fontWeight: "700" },
+    error: { color: c.nonveg, fontWeight: "600", paddingHorizontal: 20, paddingTop: 10 }, empty: { textAlign: "center", paddingVertical: 40 },
+    emptyState: { padding: 30, paddingVertical: 55, alignItems: "center", gap: 15 }, emptyTitle: { color: c.ink, fontSize: 22, fontWeight: "700" },
+    ticket: { flex: 1, backgroundColor: c.surface, borderColor: c.line, borderWidth: 1, borderRadius: 16, padding: 18, gap: 13 },
+    row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }, table: { fontSize: 22, fontWeight: "800", color: c.ink, letterSpacing: -.4 }, divider: { height: 1, backgroundColor: c.line, marginVertical: 2 },
+    line: { flexDirection: "row", alignItems: "center", gap: 9 }, qty: { fontWeight: "700", color: c.ink, minWidth: 26, fontSize: 15 }, lineText: { color: c.ink, fontSize: 15, flexShrink: 1 },
+    mark: { width: 13, height: 13, borderWidth: 1.3, borderRadius: 2, alignItems: "center", justifyContent: "center" }, markDot: { width: 5, height: 5 },
+    note: { backgroundColor: c.soft, borderRadius: 9, padding: 12 }, pill: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, fontSize: 11, fontWeight: "700" },
+    total: { color: c.ink, fontSize: 20, fontWeight: "800" }, paidDetail: { color: c.good, fontSize: 12 },
+    smallBtn: { borderWidth: 1, borderColor: c.line, backgroundColor: c.surface, borderRadius: 9, paddingHorizontal: 12, paddingVertical: 12, minHeight: 44, justifyContent: "center", alignItems: "center" }, smallBtnText: { fontWeight: "600", color: c.ink, fontSize: 12 },
   });
 }
