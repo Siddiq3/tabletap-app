@@ -180,6 +180,11 @@ export default function Orders() {
             {session ? `${session.staff.name} · ${session.staff.role}` : member ? `${member.role} · live orders` : "Loading…"}
           </Text>
         </View>
+        {member && member.role !== "kitchen" && (
+          <Pressable accessibilityRole="button" onPress={() => router.push("/bills")} style={[s.smallBtn, { backgroundColor: c.accent, borderColor: c.accent }]}>
+            <Text style={[s.smallBtnText, { color: c.accentInk }]}>Bills</Text>
+          </Pressable>
+        )}
         {lockApplies && (
           <Pressable accessibilityRole="button" onPress={lock} style={[s.smallBtn, { backgroundColor: c.ink, borderColor: c.ink }]}>
             <Text style={[s.smallBtnText, { color: c.surface }]}>Switch staff</Text>
