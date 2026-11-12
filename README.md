@@ -67,3 +67,7 @@ In dummy mode, **Simulate guest calling staff** tests the inbox, duplicate preve
 ### Staff call sound
 
 New calls play the bundled `assets/staff-call.wav` chime alongside vibration in the native app. Use **Call sound on · mute** to mute, or **Enable call sound** to preview and restore sound. In the web preview, enable sound first to satisfy browser autoplay rules. Repeated polling or duplicate taps do not replay a call’s alert. The audio module is configured for playback only, with recording permissions and background playback disabled. Physical-device speaker/volume testing is still required; Android/iOS bundle compilation and browser playback are verified.
+
+## Bills
+
+**Bills** on the orders screen (everyone except kitchen) lists open bills with invoice numbers and balance due. Waiters start an order for a free table or a takeaway and add items to any bill; cashiers and managers take full or split payments (cash, UPI, card). Printing bills and KOTs stays on the counter/kitchen screen. The PIN lock still applies: unlocked staff only, back to "Who's working?" after 10 idle minutes. The sample restaurant (demo mode) has no bills; use the web owner demo to try them.

@@ -1,12 +1,13 @@
 import { useColorScheme } from 'react-native';
 const light = {
-  bg: '#F6F8F2', surface: '#FFFFFF', ink: '#203B31', muted: '#5B6E64', line: '#DDE5D7', soft: '#EAF0E5',
-  accent: '#D2412A', accentInk: '#FFFFFF', turmeric: '#E3A21A', info: '#2F6FB0',
+  // 60-30-10, same as the website: light surfaces, curry-leaf green text, turmeric for the main action.
+  bg: '#F6F8F6', surface: '#FFFFFF', ink: '#0B2A20', muted: '#56675F', line: '#DBE3DD', soft: '#EEF2EE',
+  accent: '#F4B400', accentInk: '#0B2A20', turmeric: '#F4B400', info: '#2F6FB0',
   veg: '#35713E', nonveg: '#B3261E', good: '#35713E', warn: '#93600F',
 };
 const dark: typeof light = {
-  bg: '#101B15', surface: '#19281F', ink: '#EBF2E5', muted: '#A7B9AA', line: '#36483B', soft: '#24392A',
-  accent: '#F8846C', accentInk: '#24100A', turmeric: '#F2B53A', info: '#8BB7EF',
+  bg: '#0B1F18', surface: '#12291F', ink: '#F2F5EF', muted: '#9FB1A8', line: '#24423A', soft: '#173126',
+  accent: '#F4B400', accentInk: '#0B2A20', turmeric: '#F4B400', info: '#8BB7EF',
   veg: '#83D396', nonveg: '#FF9B91', good: '#83D396', warn: '#F0C27A',
 };
 export type Colors = typeof light;
